@@ -1,8 +1,4 @@
 
-
-!pip install opencv-python scikit-learn numpy
-!pip install opencv-python
-
 import numpy as np
 import cv2
 from sklearn.model_selection import train_test_split  # if needed
@@ -157,6 +153,20 @@ import random
 
 from torch.utils.data import random_split
 import torch
+
+# Split and save indices
+dataset_size = len(dataset)
+train_size = int(0.8 * dataset_size)
+test_size = dataset_size - train_size
+
+train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
+
+# Save indices
+torch.save(train_dataset.indices, './data_cache/train_indices.pt')
+torch.save(test_dataset.indices, './data_cache/test_indices.pt')
+
+
+
 from torch.utils.data import DataLoader, Subset, random_split
 
 # Load the indices
@@ -351,23 +361,16 @@ If too many epochs → model memorizes and generalizes badly.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device:", device)
 
-# # Load ONLY pretrained LSTM weights
-# lstm_model = TrajectoryLSTM().to(device)
-# lstm_weights = torch.load('./model_cache/trajectory_lstm_2.pth')
-# lstm_model.load_state_dict(lstm_weights)
-# print(" Loaded pretrained LSTM into multimodal model.")
+# Load ONLY pretrained LSTM weights
+lstm_model = TrajectoryLSTM().to(device)
+lstm_weights = torch.load('./model_cache/trajectory_lstm_2.pth')
+lstm_model.load_state_dict(lstm_weights)
+print(" Loaded pretrained LSTM into multimodal model.")
 
 # Initializing multimodal model
 model = MultiModalPedestrianNet(lstm_model, pred_len=45).to(device)
 
-# Recreate your LSTM first (same structure!)
-lstm_model = TrajectoryLSTM().to(device)
 
-# Then rebuild the full model
-model = MultiModalPedestrianNet(lstm_model, pred_len=45).to(device)
-
-# Load the weights
-model.load_state_dict(torch.load('./model_cache/multimodal_model.pth'))
 
 # Optimizer & loss functions
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
