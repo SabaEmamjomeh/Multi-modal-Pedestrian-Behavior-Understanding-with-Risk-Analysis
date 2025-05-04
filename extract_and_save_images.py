@@ -1,11 +1,5 @@
 
 
-!pip install opencv-python scikit-learn numpy
-!pip install opencv-python
-"""### Download Video Clips (Don't run it)"""
-
-!bash download_clips.sh
-
 
 
 import numpy as np
