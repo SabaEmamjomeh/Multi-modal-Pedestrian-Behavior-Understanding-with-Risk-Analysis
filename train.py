@@ -129,7 +129,6 @@ transform = transforms.Compose([
                          std=[0.229, 0.224, 0.225])
 ])
 
-img_tensor = transform(img)
 
 """##Initialize the Dataset
 create an object dataset that knows how to load JAAD pedestrian data.
