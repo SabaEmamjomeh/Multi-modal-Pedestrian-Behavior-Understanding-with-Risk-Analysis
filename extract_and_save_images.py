@@ -137,7 +137,7 @@ transform = transforms.Compose([
 
 # img_path = os.path.join(jaad_path, 'images/video_0001/00000.png')
 # img = Image.open(img_path).convert('RGB')
-img_tensor = transform(img)
+# img_tensor = transform(img)
 
 # Image.open(img_path).convert('RGB')
 
