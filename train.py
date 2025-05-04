@@ -14,14 +14,14 @@ import torch
 
 from jaad_data import JAAD
 
-jaad_path = "/content/drive/MyDrive/DL/JAAD_repo/JAAD-JAAD_2.0"
+jaad_path = "./"
 imdb = JAAD(data_path=jaad_path)
 
 """##Load Parsed Data"""
 
 import pickle
 
-pkl_path = "/content/drive/MyDrive/DL/JAAD_repo/JAAD-JAAD_2.0/data_cache/jaad_database.pkl"
+pkl_path = "./data_cache/jaad_database.pkl"
 
 with open(pkl_path, "rb") as f:
     db = pickle.load(f)
