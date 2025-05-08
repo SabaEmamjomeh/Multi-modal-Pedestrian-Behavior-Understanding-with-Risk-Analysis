@@ -6,36 +6,37 @@ from PIL import Image
 from torchvision import transforms
 import os
 import torch
+import pickle
+from torch.utils.data import Dataset
+from jaad_data import JAAD
+from torch.utils.data import DataLoader, Subset
+from sklearn.metrics import accuracy_score, mean_squared_error
+import torch.nn as nn
+import torchvision.models as models
+
 
 """#Preprocessing
 
 ##Annotation Parsing (Don't run the second cell))
 """
 
-from jaad_data import JAAD
+
 
 jaad_path = "./"
 imdb = JAAD(data_path=jaad_path)
 
 """##Load Parsed Data"""
 
-import pickle
 
 pkl_path = "./data_cache/jaad_database.pkl"
 
 with open(pkl_path, "rb") as f:
     db = pickle.load(f)
 
-# print(list(db.keys())[100:105])
-# print(db['video_0001'])
 
 """##Building the Dataset Class"""
 
-import os
-import pickle
-import torch
-from torch.utils.data import Dataset
-from PIL import Image
+
 
 class PedestrianDataset(Dataset):
     def __init__(self, trajectory_pkl_path, db_path, img_base_path, transform=None):
@@ -112,15 +113,13 @@ class PedestrianDataset(Dataset):
             'risk':      torch.tensor(risk_score, dtype=torch.float32)
         }
 
-        return img, obs_traj, labels, pred_traj   #  RETURNS FUTURE TRAJECTORY
+        return img, obs_traj, labels, pred_traj, video_id, ped_id   #  RETURNS FUTURE TRAJECTORY
 
 """##Image Transformations
 
 """
 
-from torchvision import transforms
-from PIL import Image
-import os
+
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -145,28 +144,11 @@ print("Total number of samples:", len(dataset))
 
 """Printing a Random Pedestrian's Behavior"""
 
-import random
+
 
 
 """##DataLoader"""
 
-from torch.utils.data import random_split
-import torch
-
-# Split and save indices
-dataset_size = len(dataset)
-train_size = int(0.8 * dataset_size)
-test_size = dataset_size - train_size
-
-train_dataset, test_dataset = random_split(dataset, [train_size, test_size])
-
-# Save indices
-torch.save(train_dataset.indices, './data_cache/train_indices.pt')
-torch.save(test_dataset.indices, './data_cache/test_indices.pt')
-
-
-
-from torch.utils.data import DataLoader, Subset, random_split
 
 # Load the indices
 train_indices = torch.load('./data_cache/train_indices.pt')
@@ -186,22 +168,6 @@ Because LSTM starts randomly and needs warm-up we need to train LSTM using traje
 
 """
 
-#small code plan:
-import torch
-import torch.nn as nn
-
-# saba code
-# class TrajectoryPredictor(nn.Module):
-#     def __init__(self, obs_len=15, pred_len=45, hidden_size=128):
-#         super().__init__()
-#         self.lstm = nn.LSTM(input_size=2, hidden_size=hidden_size, batch_first=True)
-#         self.fc = nn.Linear(hidden_size, pred_len * 2)  # Predict 45 (x,y) pairs
-
-#     def forward(self, trajs):
-#         _, (h_n, _) = self.lstm(trajs)
-#         last_hidden = h_n[-1]
-#         output = self.fc(last_hidden)
-#         return output.view(trajs.size(0), 45, 2)  # Ensure output shape is [B, 45, 2]
 
 class TrajectoryLSTM(nn.Module):
     def __init__(self, input_size=2, hidden_size=128, num_layers=2, output_size=2):
@@ -226,38 +192,8 @@ class TrajectoryLSTM(nn.Module):
 
         return torch.cat(outputs, dim=1)  # (B, 45, 2)
 
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# print('Using device:', device)
-
-# mini_model = TrajectoryPredictor().to(device)
-# optimizer_lstm = torch.optim.Adam(mini_model.parameters(), lr=1e-3)
-# criterion_traj = nn.MSELoss()
-
-# for epoch in range(10):
-#     mini_model.train()
-#     total_loss = 0.0
-
-#     for images, obs_traj, labels, future_traj in dataloader:
-#         obs_traj = obs_traj.to(device)
-#         future_traj = future_traj.to(device)
-
-#         optimizer_lstm.zero_grad()
-#         pred_future_traj = mini_model(obs_traj)
-#         loss = criterion_traj(pred_future_traj, future_traj)
-#         loss.backward()
-#         optimizer_lstm.step()
-
-#         total_loss += loss.item()
-
-#     print(f"Epoch {epoch+1} - LSTM Pretrain Loss: {total_loss / len(dataloader):.4f}")
-
-# # saving pretrained LSTM weights
-# torch.save(mini_model.lstm.state_dict(), 'pretrained_lstm.pth')
-# print("Pretrained LSTM weights saved as 'pretrained_lstm.pth'.")
 
 """## Model Definition & Forward Pass"""
-
-import torchvision.models as models
 
 class MultiModalPedestrianNet(nn.Module):
     def __init__(self,
@@ -288,10 +224,6 @@ class MultiModalPedestrianNet(nn.Module):
                 p.requires_grad = False
 
         # ---- 2) Trajectory branch: LSTM + LayerNorm ----
-        # self.lstm = nn.LSTM(input_size=2,
-        #                     hidden_size=lstm_hidden,
-        #                     num_layers=1,
-        #                     batch_first=True)
         self.lstm = LSTM_model
         self.traj_norm = nn.LayerNorm(lstm_hidden)
 
@@ -360,6 +292,7 @@ If too many epochs → model memorizes and generalizes badly.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device:", device)
 
+
 # Load ONLY pretrained LSTM weights
 lstm_model = TrajectoryLSTM().to(device)
 lstm_weights = torch.load('./model_cache/trajectory_lstm_2.pth')
@@ -370,132 +303,194 @@ print(" Loaded pretrained LSTM into multimodal model.")
 model = MultiModalPedestrianNet(lstm_model, pred_len=45).to(device)
 
 
+# # Recreate your LSTM first (same structure!)
+# lstm_model = TrajectoryLSTM().to(device)
+
+# # Then rebuild the full model
+# model = MultiModalPedestrianNet(lstm_model, pred_len=45).to(device)
+
+# # Load the weights
+# model.load_state_dict(torch.load('data_cache/multimodal_model.pth'))
+
+
 
 # Optimizer & loss functions
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 criterion_bce = nn.BCEWithLogitsLoss()
 criterion_mse = nn.MSELoss()
 
-# Training configuration
-epochs = 2
-print_every = 1
-
 # Training loop
-for epoch in range(epochs):
-    model.train()
-    running_loss = 0.0
 
-    for batch_idx, (images, trajs, labels, future_traj) in enumerate(train_loader):
-        images = images.to(device)
-        trajs = trajs.to(device)
-        labels = {k: v.to(device) for k, v in labels.items()}
+def train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, device, epochs=10, print_every=1, save_every=5):
+    model.to(device)
 
-        optimizer.zero_grad()
+    # For logging
+    history = {
+        'epoch': [],
+        'loss': [],
+        'intent_loss': [],
+        'action_loss': [],
+        'risk_loss': [],
+        'intent_acc': [],
+        'action_acc': [],
+        'risk_rmse': [],
+    }
 
-        # Forward pass
-        intent_logits, action_logits, risk_preds, _ = model(images, trajs)
+    logits_records = defaultdict(list)
 
-        # Compute individual losses
-        loss_intent = criterion_bce(intent_logits.squeeze(), labels['intention'])
-        loss_action = criterion_bce(action_logits.squeeze(), labels['action'])
-        loss_risk = criterion_mse(risk_preds.squeeze(), labels['risk'])
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        total_intent_correct = 0
+        total_action_correct = 0
+        total_samples = 0
+        total_risk_mse = 0.0
 
-        # Total multi-task loss
-        loss = loss_intent + loss_action + loss_risk
+        for batch_idx, (images, trajs, labels, future_traj, video_id, ped_id) in enumerate(train_loader):
+            images = images.to(device)
+            trajs = trajs.to(device)
+            labels = {k: v.to(device) for k, v in labels.items()}
 
-        # Backpropagation
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        optimizer.step()
+            optimizer.zero_grad()
 
-        running_loss += loss.item()
+            # Forward pass
+            intent_logits, action_logits, risk_preds, _ = model(images, trajs)
 
-    avg_loss = running_loss / len(train_loader)
 
-    if (epoch + 1) % print_every == 0:
-        print(f"Epoch [{epoch+1}/{epochs}] - Average Loss: {avg_loss:.4f}")
+            logits_records['intent_logits'].append(intent_logits.detach().cpu().numpy())
+            logits_records['action_logits'].append(action_logits.detach().cpu().numpy())
+            logits_records['risk_preds'].append(risk_preds.detach().cpu().numpy())
+            logits_records['video_id'].append(video_id.detach().cpu().numpy())
+            logits_records['ped_id'].append(ped_id.detach().cpu().numpy())
 
-# Save full training checkpoint
-checkpoint = {
-    'epoch': epochs,
-    'model_state_dict': model.state_dict(),
-    'optimizer_state_dict': optimizer.state_dict(),
-    'loss': avg_loss
-}
-torch.save(checkpoint, './model_cache/checkpoint.pth')
-print("Full checkpoint saved as 'checkpoint.pth'")
 
-# Save model weights separately
-torch.save(model.state_dict(), './model_cache/multimodal_model.pth')
-print(" Final model weights saved as 'multimodal_model.pth'")
+            # Compute individual losses
+            loss_intent = criterion_bce(intent_logits.squeeze(), labels['intention'])
+            loss_action = criterion_bce(action_logits.squeeze(), labels['action'])
+            loss_risk = criterion_mse(risk_preds.squeeze(), labels['risk'])
+
+            # Total multi-task loss
+            loss = loss_intent + loss_action + loss_risk
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            running_loss += loss.item()
+
+            # Compute accuracy and RMSE for logging
+            with torch.no_grad():
+                intent_pred = torch.sigmoid(intent_logits.squeeze()) > 0.5
+                action_pred = torch.sigmoid(action_logits.squeeze()) > 0.5
+                total_intent_correct += (intent_pred == labels['intention']).sum().item()
+                total_action_correct += (action_pred == labels['action']).sum().item()
+                total_risk_mse += F.mse_loss(risk_preds.squeeze(), labels['risk'], reduction='sum').item()
+                total_samples += labels['intention'].size(0)
+
+        avg_loss = running_loss / len(train_loader)
+        intent_acc = total_intent_correct / total_samples
+        action_acc = total_action_correct / total_samples
+        risk_rmse = (total_risk_mse / total_samples) ** 0.5
+
+        history['epoch'].append(epoch + 1)
+        history['loss'].append(avg_loss)
+        history['intent_loss'].append(loss_intent.item())
+        history['action_loss'].append(loss_action.item())
+        history['risk_loss'].append(loss_risk.item())
+        history['intent_acc'].append(intent_acc)
+        history['action_acc'].append(action_acc)
+        history['risk_rmse'].append(risk_rmse)
+
+        if (epoch + 1) % print_every == 0:
+            print(f"Epoch [{epoch+1}/{epochs}] - Loss: {avg_loss:.4f}, Intent Acc: {intent_acc:.4f}, Action Acc: {action_acc:.4f}, Risk RMSE: {risk_rmse:.4f}")
+
+        if (epoch + 1) % save_every == 0:
+            torch.save(model.state_dict(), f'./model_cache/multimodal_model_{epoch + 1}.pth')
+            print(f"Epoch {epoch + 1}: Checkpoint and weights saved.")
+
+        with open(f'./data_cache/logits_epoch_{epoch+1}.pkl', 'wb') as f:
+            pickle.dump(logits_records, f)
+        logits_records.clear()  # Reset for next epoch
+
+    # Save checkpoint and model
+    torch.save({
+        'epoch': epochs,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': avg_loss
+    }, './model_cache/checkpoint.pth')
+
+    torch.save(model.state_dict(), './model_cache/multimodal_model.pth')
+
+    print("Training complete. Checkpoint and weights saved.")
+    return history
 
 
 """#Evaluation"""
 
-import numpy as np
-from sklearn.metrics import accuracy_score, mean_squared_error
+def evaluate_model(model, test_loader, device):
+    model.eval()
 
-model.eval()
+    all_intention_preds = []
+    all_intention_labels = []
 
-all_intention_preds = []
-all_intention_labels = []
+    all_action_preds = []
+    all_action_labels = []
 
-all_action_preds = []
-all_action_labels = []
+    all_risk_preds = []
+    all_risk_labels = []
 
-all_risk_preds = []
-all_risk_labels = []
+    with torch.no_grad():
+        for images, obs_traj, labels, future_traj in test_loader:
+            images = images.to(device)
+            obs_traj = obs_traj.to(device)
+            labels = {k: v.to(device) for k, v in labels.items()}
 
-with torch.no_grad():
-    for images, obs_traj, labels, future_traj in test_loader:
-        images = images.to(device)
-        obs_traj = obs_traj.to(device)
-        labels = {k: v.to(device) for k, v in labels.items()}
+            # Forward pass
+            intent_logits, action_logits, risk_preds, _ = model(images, obs_traj)
 
-        # Forward pass
-        intent_logits, action_logits, risk_preds, traj_preds = model(images, obs_traj)
+            # Intention prediction
+            intention_pred = (torch.sigmoid(intent_logits).squeeze() > 0.5).long()
+            intention_label = labels['intention'].long()
 
-        # intention
-        intention_pred = (torch.sigmoid(intent_logits).squeeze() > 0.5).long()
-        intention_label = labels['intention'].long()
+            all_intention_preds.append(intention_pred.cpu().numpy())
+            all_intention_labels.append(intention_label.cpu().numpy())
 
-        all_intention_preds.append(intention_pred.cpu().numpy())
-        all_intention_labels.append(intention_label.cpu().numpy())
+            # Action prediction
+            action_pred = (torch.sigmoid(action_logits).squeeze() > 0.5).long()
+            action_label = labels['action'].long()
 
-        # action
-        action_pred = (torch.sigmoid(action_logits).squeeze() > 0.5).long()
-        action_label = labels['action'].long()
+            all_action_preds.append(action_pred.cpu().numpy())
+            all_action_labels.append(action_label.cpu().numpy())
 
-        all_action_preds.append(action_pred.cpu().numpy())
-        all_action_labels.append(action_label.cpu().numpy())
+            # Risk regression
+            risk_pred = risk_preds.squeeze()
+            risk_label = labels['risk']
 
-        # risk
-        risk_pred = risk_preds.squeeze()
-        risk_label = labels['risk']
+            all_risk_preds.append(risk_pred.cpu().numpy())
+            all_risk_labels.append(risk_label.cpu().numpy())
 
-        all_risk_preds.append(risk_pred.cpu().numpy())
-        all_risk_labels.append(risk_label.cpu().numpy())
+    # Concatenate all batches
+    all_intention_preds = np.concatenate(all_intention_preds)
+    all_intention_labels = np.concatenate(all_intention_labels)
+    all_action_preds = np.concatenate(all_action_preds)
+    all_action_labels = np.concatenate(all_action_labels)
+    all_risk_preds = np.concatenate(all_risk_preds)
+    all_risk_labels = np.concatenate(all_risk_labels)
 
-all_intention_preds = np.concatenate(all_intention_preds)
-all_intention_labels = np.concatenate(all_intention_labels)
-all_action_preds = np.concatenate(all_action_preds)
-all_action_labels = np.concatenate(all_action_labels)
-all_risk_preds = np.concatenate(all_risk_preds)
-all_risk_labels = np.concatenate(all_risk_labels)
+    # Compute metrics
+    intention_acc = accuracy_score(all_intention_labels, all_intention_preds)
+    action_acc = accuracy_score(all_action_labels, all_action_preds)
+    risk_rmse = np.sqrt(mean_squared_error(all_risk_labels, all_risk_preds))
 
-intention_acc = accuracy_score(all_intention_labels, all_intention_preds)
-action_acc = accuracy_score(all_action_labels, all_action_preds)
-risk_rmse = np.sqrt(mean_squared_error(all_risk_labels, all_risk_preds))
+    print("\n==== Evaluation Results ====")
+    print(f"Intention Accuracy: {intention_acc * 100:.2f}%")
+    print(f"Action Accuracy:    {action_acc * 100:.2f}%")
+    print(f"Risk RMSE:          {risk_rmse:.4f}")
 
-print("\n==== Evaluation Results ====")
-print(f"Intention Accuracy: {intention_acc*100:.2f}%")
-print(f"Action Accuracy:    {action_acc*100:.2f}%")
-print(f"Risk RMSE:          {risk_rmse:.4f}")
 
-""":==== Evaluation Results ====
-Intention Accuracy: 85.23%
-Action Accuracy:    81.67%
-Risk RMSE:          0.1523
 
-"""
+history = train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, device)
+evaluate_model(model, test_loader, device)
 
+with open('./data_cache/train_stats.pkl', 'wb') as f:
+    pickle.dump(history, f)
