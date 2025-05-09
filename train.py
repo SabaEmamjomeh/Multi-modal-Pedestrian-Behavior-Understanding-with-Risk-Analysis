@@ -13,6 +13,8 @@ from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import accuracy_score, mean_squared_error
 import torch.nn as nn
 import torchvision.models as models
+from collections import defaultdict
+import torch.nn.functional as F
 
 
 """#Preprocessing
@@ -360,8 +362,8 @@ def train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, de
             logits_records['intent_logits'].append(intent_logits.detach().cpu().numpy())
             logits_records['action_logits'].append(action_logits.detach().cpu().numpy())
             logits_records['risk_preds'].append(risk_preds.detach().cpu().numpy())
-            logits_records['video_id'].append(video_id.detach().cpu().numpy())
-            logits_records['ped_id'].append(ped_id.detach().cpu().numpy())
+            logits_records['video_id'].append(video_id)
+            logits_records['ped_id'].append(ped_id)
 
 
             # Compute individual losses
