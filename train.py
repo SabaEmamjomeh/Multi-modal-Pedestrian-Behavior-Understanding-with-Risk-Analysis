@@ -13,8 +13,11 @@ from torch.utils.data import DataLoader, Subset
 from sklearn.metrics import accuracy_score, mean_squared_error
 import torch.nn as nn
 import torchvision.models as models
+<<<<<<< HEAD
 from collections import defaultdict
 import torch.nn.functional as F
+=======
+>>>>>>> cc2c66de15a6f61d4c02d1d7f3c99f9c767bf17c
 
 
 """#Preprocessing
@@ -323,7 +326,11 @@ criterion_mse = nn.MSELoss()
 
 # Training loop
 
+<<<<<<< HEAD
 def train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, device, epochs=5, print_every=1, save_every=5):
+=======
+def train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, device, epochs=10, print_every=1, save_every=5):
+>>>>>>> cc2c66de15a6f61d4c02d1d7f3c99f9c767bf17c
     model.to(device)
 
     # For logging
@@ -359,6 +366,7 @@ def train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, de
             intent_logits, action_logits, risk_preds, _ = model(images, trajs)
 
 
+<<<<<<< HEAD
 
             logits_records['intent_logits'].append(intent_logits.detach().cpu().numpy())
             logits_records['action_logits'].append(action_logits.detach().cpu().numpy())
@@ -370,6 +378,15 @@ def train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, de
             logits_records['risk_label'].append(labels['risk'])
 
 
+=======
+            logits_records['intent_logits'].append(intent_logits.detach().cpu().numpy())
+            logits_records['action_logits'].append(action_logits.detach().cpu().numpy())
+            logits_records['risk_preds'].append(risk_preds.detach().cpu().numpy())
+            logits_records['video_id'].append(video_id.detach().cpu().numpy())
+            logits_records['ped_id'].append(ped_id.detach().cpu().numpy())
+
+
+>>>>>>> cc2c66de15a6f61d4c02d1d7f3c99f9c767bf17c
             # Compute individual losses
             loss_intent = criterion_bce(intent_logits.squeeze(), labels['intention'])
             loss_action = criterion_bce(action_logits.squeeze(), labels['action'])
@@ -446,7 +463,11 @@ def evaluate_model(model, test_loader, device):
     all_risk_labels = []
 
     with torch.no_grad():
+<<<<<<< HEAD
         for images, obs_traj, labels, future_traj, video_id, ped_id in test_loader:
+=======
+        for images, obs_traj, labels, future_traj in test_loader:
+>>>>>>> cc2c66de15a6f61d4c02d1d7f3c99f9c767bf17c
             images = images.to(device)
             obs_traj = obs_traj.to(device)
             labels = {k: v.to(device) for k, v in labels.items()}
@@ -496,7 +517,12 @@ def evaluate_model(model, test_loader, device):
 
 
 history = train_model(model, train_loader, optimizer, criterion_bce, criterion_mse, device)
+<<<<<<< HEAD
 with open('./data_cache/train_stats.pkl', 'wb') as f:
     pickle.dump(history, f)
+=======
+>>>>>>> cc2c66de15a6f61d4c02d1d7f3c99f9c767bf17c
 evaluate_model(model, test_loader, device)
 
+with open('./data_cache/train_stats.pkl', 'wb') as f:
+    pickle.dump(history, f)
